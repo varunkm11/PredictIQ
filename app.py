@@ -5,30 +5,49 @@ import requests
 import json
 import os
 import sys
+import importlib.util
 
-# Add root to path for imports
-app_dir = os.path.dirname(os.path.abspath(__file__))
-if app_dir not in sys.path:
-    sys.path.insert(0, app_dir)
+# Fix module path BEFORE any imports
+_app_dir = os.path.dirname(os.path.abspath(__file__))
+if _app_dir not in sys.path:
+    sys.path.insert(0, _app_dir)
 
+# Try to load the auto_trainer module
 try:
+    # Method 1: Direct package import (preferred)
     from model.auto_trainer import (
         train_on_dataset,
         load_metadata,
         predict_single,
         detect_column_types
     )
-except ImportError as e:
-    st.error(f"❌ Import Error: {str(e)}")
-    st.info(f"App directory: {app_dir}")
-    st.info(f"Python path: {sys.path[:3]}")  # Show first 3 paths for debugging
-    with st.expander("Full Error Details"):
-        import traceback
-        st.code(traceback.format_exc())
-    st.stop()
-except Exception as e:
-    st.error(f"❌ Unexpected Error: {str(e)}")
-    st.stop()
+except (ModuleNotFoundError, ImportError) as e:
+    # Method 2: Fallback - load module directly from file
+    try:
+        auto_trainer_path = os.path.join(_app_dir, "model", "auto_trainer.py")
+        spec = importlib.util.spec_from_file_location("auto_trainer", auto_trainer_path)
+        auto_trainer = importlib.util.module_from_spec(spec)
+        sys.modules["auto_trainer"] = auto_trainer
+        spec.loader.exec_module(auto_trainer)
+        
+        train_on_dataset = auto_trainer.train_on_dataset
+        load_metadata = auto_trainer.load_metadata
+        predict_single = auto_trainer.predict_single
+        detect_column_types = auto_trainer.detect_column_types
+    except Exception as e2:
+        st.error(f"❌ Failed to load model module via both methods")
+        st.error(f"Method 1 error: {str(e)}")
+        st.error(f"Method 2 error: {str(e2)}")
+        st.error(f"\nDebug Info:")
+        st.write(f"- App directory: {_app_dir}")
+        st.write(f"- Model path: {os.path.join(_app_dir, 'model')}")
+        st.write(f"- Model exists: {os.path.exists(os.path.join(_app_dir, 'model'))}")
+        st.write(f"- __init__.py exists: {os.path.exists(os.path.join(_app_dir, 'model', '__init__.py'))}")
+        st.write(f"- auto_trainer.py exists: {os.path.exists(auto_trainer_path)}")
+        with st.expander("Full traceback"):
+            import traceback
+            st.code(traceback.format_exc())
+        st.stop()
 
 # Cache metadata loading
 @st.cache_resource
