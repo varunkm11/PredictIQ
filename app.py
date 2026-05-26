@@ -6,15 +6,34 @@ import json
 import os
 import sys
 
-# Add root to path
-sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+# Add root to path for imports
+app_dir = os.path.dirname(os.path.abspath(__file__))
+if app_dir not in sys.path:
+    sys.path.insert(0, app_dir)
 
-from model.auto_trainer import (
-    train_on_dataset,
-    load_metadata,
-    predict_single,
-    detect_column_types
-)
+try:
+    from model.auto_trainer import (
+        train_on_dataset,
+        load_metadata,
+        predict_single,
+        detect_column_types
+    )
+except ImportError as e:
+    st.error(f"❌ Import Error: {str(e)}")
+    st.info(f"App directory: {app_dir}")
+    st.info(f"Python path: {sys.path[:3]}")  # Show first 3 paths for debugging
+    with st.expander("Full Error Details"):
+        import traceback
+        st.code(traceback.format_exc())
+    st.stop()
+except Exception as e:
+    st.error(f"❌ Unexpected Error: {str(e)}")
+    st.stop()
+
+# Cache metadata loading
+@st.cache_resource
+def get_metadata():
+    return load_metadata()
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -128,7 +147,7 @@ with st.sidebar:
     st.divider()
 
     # Model status
-    metadata = load_metadata()
+    metadata = get_metadata()
     if metadata:
         st.markdown("**✅ Model Trained**")
         st.caption(f"Target: `{metadata['target_column']}`")
@@ -325,7 +344,7 @@ elif page == "📂 Train Model":
 elif page == "🔮 Predict":
     st.title("🔮 Make Predictions")
 
-    metadata = load_metadata()
+    metadata = get_metadata()
 
     if metadata is None:
         st.warning("⚠️ No model trained yet. Go to **📂 Train Model** first.")
@@ -347,9 +366,10 @@ elif page == "🔮 Predict":
 
         # Load training data for reference ranges
         train_df = None
-        if os.path.exists("model/train_data.csv"):
+        train_data_path = os.path.join(os.path.dirname(__file__), "model", "train_data.csv")
+        if os.path.exists(train_data_path):
             try:
-                train_df = pd.read_csv("model/train_data.csv")
+                train_df = pd.read_csv(train_data_path)
             except:
                 pass
 
@@ -433,7 +453,7 @@ elif page == "🔮 Predict":
                 progress = st.progress(0)
                 status   = st.empty()
 
-                for i, row in batch_df.iterrows():
+                for idx, (_, row) in enumerate(batch_df.iterrows()):
                     try:
                         result = predict_single(row.to_dict())
                         row_result = row.to_dict()
@@ -445,8 +465,8 @@ elif page == "🔮 Predict":
                     except:
                         pass
 
-                    progress.progress((i + 1) / len(batch_df))
-                    status.caption(f"Processing {i+1}/{len(batch_df)}...")
+                    progress.progress((idx + 1) / len(batch_df))
+                    status.caption(f"Processing {idx+1}/{len(batch_df)}...")
 
                 status.empty()
 
@@ -475,7 +495,7 @@ elif page == "🔮 Predict":
 elif page == "📊 Monitoring":
     st.title("📊 Model Monitoring")
 
-    metadata = load_metadata()
+    metadata = get_metadata()
     if metadata is None:
         st.warning("No model trained yet.")
         st.stop()
@@ -508,10 +528,11 @@ elif page == "📊 Monitoring":
         })
 
     # Training data distribution
-    if os.path.exists("model/train_data.csv"):
+    train_data_path = os.path.join(os.path.dirname(__file__), "model", "train_data.csv")
+    if os.path.exists(train_data_path):
         st.divider()
         st.subheader("📈 Training Data Distribution")
-        train_df = pd.read_csv("model/train_data.csv")
+        train_df = pd.read_csv(train_data_path)
         target   = metadata["target_column"]
 
         if target in train_df.columns:
