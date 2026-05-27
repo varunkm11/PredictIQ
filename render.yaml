@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: predictiq
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run streamlit_app/app.py --server.port=8501 --server.address=0.0.0.0
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11
